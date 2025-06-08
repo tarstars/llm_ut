@@ -6,10 +6,12 @@ from typing import Dict, List
 from sqlmodel import select
 from app.model import PromptVersion, ResponseRecord
 from app.database import get_session, AsyncSession
+import os
 
 # LLM configuration
-with open("oauth.txt", "r", encoding="utf-8") as f:
-    _TOKEN = f.readline().strip()
+_TOKEN = os.getenv("ZELIBOBA_TOKEN", "").strip()
+if not _TOKEN:
+    raise RuntimeError("ZELIBOBA_TOKEN environment variable not set")
 
 _MODEL_URL = (
     "http://zeliboba.yandex-team.ru/balance/qwen3_23B_edu_ml/v1/chat/completions"
