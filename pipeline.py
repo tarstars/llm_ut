@@ -1,8 +1,10 @@
 # pipeline.py
 
 import json
+import asyncio
 import requests
 from jinja2 import Template
+import openai
 from .models import PromptVersion, ResponseRecord
 
 # LLM configuration
