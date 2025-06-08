@@ -1,0 +1,44 @@
+from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+from app.database import init_db, get_session
+from app.model import PromptVersion, ResponseRecord
+import uuid
+import asyncio
+from typing import List
+from pipeline import process_prompt
+
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
+
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
+
+@app.post("/prompts")
+async def add_prompt(payload: dict, background: BackgroundTasks, session: AsyncSession = Depends(get_session)):
+    text = payload.get("prompt_text", "")
+    pid = str(uuid.uuid4())
+    pv = PromptVersion(prompt_id=pid, prompt_text=text, metrics={"correctness":0, "code_presence":0, "line_reference":0, "final_score":0})
+    session.add(pv)
+    await session.commit()
+    background.add_task(process_prompt, pid, text)
+    return {"prompt_id": pid, "status": "queued"}
+
+@app.get("/prompts")
+async def list_prompts(session: AsyncSession = Depends(get_session)) -> List[PromptVersion]:
+    result = await session.exec(select(PromptVersion))
+    prompts = result.all()
+    prompts.sort(key=lambda p: p.metrics.get("final_score", 0), reverse=True)
+    return prompts
+
+@app.get("/prompts/{prompt_id}/worst")
+async def worst_cases(prompt_id: str, session: AsyncSession = Depends(get_session)) -> List[ResponseRecord]:
+    result = await session.exec(select(ResponseRecord).where(ResponseRecord.prompt_id == prompt_id, ResponseRecord.final_flag == False))
+    return result.all()
