@@ -102,9 +102,14 @@ def evaluate_answer(
     llm_fn=None,
     **llm_kwargs,
 ) -> str:
-    """Use a configurable LLM function to score an answer."""
+    """Use a configurable LLM function to score an answer.
+
+    By default we reuse the answer-generation LLM to validate answers so
+    there's no need for a dedicated validation endpoint. A different
+    evaluation function can be supplied when needed.
+    """
     if llm_fn is None:
-        llm_fn = call_validation_llm
+        llm_fn = call_generation_llm
     messages = [
         {
             "role": "system",
