@@ -69,7 +69,7 @@ def call_generation_llm(messages, params=None) -> str:
         "messages": messages,
         "Params": params,
     }
-    print(f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload)}")
+    print(f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload, ensure_ascii=False)}")
     resp = requests.post(_ANSWER_URL, headers=_HEADERS, json=payload)
     resp.raise_for_status()
     data = resp.json()
