@@ -50,9 +50,9 @@ _ANSWER_URL = (
     "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/generative"
 )
 _EVAL_URL_DEFAULT = (
-    "http://zeliboba.yandex-team.ru/balance/qwen3_23B_edu_ml/v1/chat/completions"
+    "http://zeliboba.yandex-team.ru/balance/deepseek_r1_0528/generative"
 )
-_USE_SINGLE_LLM_ENDPOINT = os.getenv("USE_SINGLE_LLM_ENDPOINT", "true").lower() in (
+_USE_SINGLE_LLM_ENDPOINT = os.getenv("USE_SINGLE_LLM_ENDPOINT", "false").lower() in (
     "1",
     "true",
     "yes",
@@ -85,31 +85,18 @@ def call_generation_llm(messages, params=None) -> str:
 
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
     """Send messages to the validation LLM and return the text response."""
-    if _USE_SINGLE_LLM_ENDPOINT:
-        payload = {
-            "messages": messages,
-            "Params": {"NumHypos": 1, "Seed": 42},
-        }
-        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
-        resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        chunk = data["Responses"][0]
-        if not chunk.get("ReachedEos"):
-            raise RuntimeError("validation generation did not finish with eos")
-        return chunk["Response"]
-    else:
-        payload = {
-            "model": "does_not_matter",
-            "messages": messages,
-            "stream": False,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
-        resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+    payload = {
+        "messages": messages,
+        "Params": {"NumHypos": 1, "Seed": 42},
+    }
+    print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
+    resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
+    resp.raise_for_status()
+    data = resp.json()
+    chunk = data["Responses"][0]
+    if not chunk.get("ReachedEos"):
+        raise RuntimeError("validation generation did not finish with eos")
+    return chunk["Response"]
 
 
 with open("basket.json") as f:

@@ -17,9 +17,9 @@ aggregated evaluation results.
    ```
 3. Open `http://localhost:8000/` in a browser to use the dashboard.
 
-By default both generation and evaluation requests are sent to the same LLM
-endpoint. Set the environment variable `USE_SINGLE_LLM_ENDPOINT=false` to
-restore the previous behaviour with separate endpoints.
+By default generation and validation requests are sent to different LLM models.
+Set the environment variable `USE_SINGLE_LLM_ENDPOINT=true` to send both
+requests to the same endpoint.
 
 To verify the code, run the test suite with:
 ```bash
