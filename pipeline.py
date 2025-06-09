@@ -66,7 +66,7 @@ def parse_flags(raw: str) -> Dict[str, bool]:
 
 async def process_prompt(prompt_id: str, text: str):
     template = Template(text)
-    async with get_session() as session:
+    async for session in get_session():
         responses: List[ResponseRecord] = []
         for case in BASKET:
             answer = template.render(**case)
