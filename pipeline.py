@@ -154,7 +154,7 @@ def evaluate_answer(
     ).format(program=program, error=error, advice=advice)
 
     messages = [
-        {"role": "assessor", "content": prompt},
+        {"role": "user", "content": prompt},
     ]
     return llm_fn(messages, **llm_kwargs)
 
