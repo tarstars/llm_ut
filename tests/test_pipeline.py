@@ -7,6 +7,7 @@ import pytest
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 os.environ.setdefault('ZELIBOBA_TOKEN', 'dummy')
+os.environ.setdefault('ELIZA_API', 'dummy_eval')
 
 def test_process_prompt_triggers_missing_greenlet_error():
     from pipeline import process_prompt
@@ -110,10 +111,10 @@ def test_call_validation_llm_single_endpoint(monkeypatch):
 
     assert result == "ok"
     assert captured['url'] == pipeline._EVAL_URL
-    assert captured['headers'] == pipeline._HEADERS
+    assert captured['headers'] == pipeline._EVAL_HEADERS
     assert captured['json'] == {
+        "model": "deepseek-ai/deepseek-v3",
         "messages": [{"role": "user", "content": "hi"}],
-        "Params": {"NumHypos": 1, "Seed": 42},
     }
 
 
@@ -150,10 +151,10 @@ def test_call_validation_llm_separate_endpoint(monkeypatch):
 
     assert result == "fine"
     assert captured['url'] == pipeline._EVAL_URL
-    assert captured['headers'] == pipeline._HEADERS
+    assert captured['headers'] == pipeline._EVAL_HEADERS
     assert captured['json'] == {
+        "model": "deepseek-ai/deepseek-v3",
         "messages": [{"role": "user", "content": "hi"}],
-        "Params": {"NumHypos": 1, "Seed": 42},
     }
 
 

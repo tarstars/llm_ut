@@ -46,11 +46,15 @@ _TOKEN = os.getenv("ZELIBOBA_TOKEN", "").strip()
 if not _TOKEN:
     raise RuntimeError("ZELIBOBA_TOKEN environment variable not set")
 
+_EVAL_TOKEN = os.getenv("ELIZA_API", "").strip()
+if not _EVAL_TOKEN:
+    raise RuntimeError("ELIZA_API environment variable not set")
+
 _ANSWER_URL = (
     "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/generative"
 )
 _EVAL_URL_DEFAULT = (
-    "http://zeliboba.yandex-team.ru/balance/deepseek_r1_0528/generative"
+    "https://api.eliza.yandex.net/together/v1/chat/completions"
 )
 _USE_SINGLE_LLM_ENDPOINT = os.getenv("USE_SINGLE_LLM_ENDPOINT", "false").lower() in (
     "1",
@@ -62,6 +66,11 @@ _EVAL_URL = _ANSWER_URL if _USE_SINGLE_LLM_ENDPOINT else _EVAL_URL_DEFAULT
 _HEADERS = {
     "Content-Type": "application/json",
     "X-Model-Discovery-Oauth-Token": _TOKEN,
+}
+
+_EVAL_HEADERS = {
+    "Content-Type": "application/json",
+    "authorization": f"OAuth {_EVAL_TOKEN}",
 }
 
 
@@ -86,11 +95,11 @@ def call_generation_llm(messages, params=None) -> str:
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
     """Send messages to the validation LLM and return the text response."""
     payload = {
+        "model": "deepseek-ai/deepseek-v3",
         "messages": messages,
-        "Params": {"NumHypos": 1, "Seed": 42},
     }
     print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
-    resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
+    resp = requests.post(_EVAL_URL, headers=_EVAL_HEADERS, json=payload)
     resp.raise_for_status()
     data = resp.json()
     chunk = data["Responses"][0]
