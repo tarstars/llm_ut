@@ -37,8 +37,10 @@ def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0)
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
+
 with open("basket.json") as f:
     BASKET = json.load(f)
+
 
 def simple_evaluate(answer: str) -> str:
     correctness = "Yes" if "return" in answer else "No"
@@ -50,6 +52,7 @@ def simple_evaluate(answer: str) -> str:
         f"<line_reference>{line_reference}</line_reference>"
     )
 
+
 def parse_flags(raw: str) -> Dict[str, bool]:
     def extract(tag: str) -> bool:
         open_t = f"<{tag}>"
@@ -58,16 +61,24 @@ def parse_flags(raw: str) -> Dict[str, bool]:
             val = raw.split(open_t)[1].split(close_t)[0].strip()
             return val.lower() == "yes"
         return False
+
     return {
         "correctness": extract("correctness"),
         "code_presence": extract("code_presence"),
         "line_reference": extract("line_reference"),
     }
 
+
 async def process_prompt(prompt_id: str, text: str):
     template = Template(text)
     async for session in get_session():
-        responses: List[ResponseRecord] = []
+        total = 0
+        counts = {
+            "correctness": 0,
+            "code_presence": 0,
+            "line_reference": 0,
+            "final": 0,
+        }
         for case in BASKET:
             answer = template.render(**case)
             # Log the rendered prompt for debugging/inspection
@@ -84,16 +95,22 @@ async def process_prompt(prompt_id: str, text: str):
                 final_flag=final_flag,
             )
             session.add(rec)
-            responses.append(rec)
+            counts["correctness"] += 1 if flags["correctness"] else 0
+            counts["code_presence"] += 1 if flags["code_presence"] else 0
+            counts["line_reference"] += 1 if flags["line_reference"] else 0
+            counts["final"] += 1 if final_flag else 0
+            total += 1
         await session.commit()
-        if responses:
+        if total:
             metrics = {
-                "correctness": sum(r.flags["correctness"] for r in responses) / len(responses),
-                "code_presence": sum(r.flags["code_presence"] for r in responses) / len(responses),
-                "line_reference": sum(r.flags["line_reference"] for r in responses) / len(responses),
+                "correctness": counts["correctness"] / total,
+                "code_presence": counts["code_presence"] / total,
+                "line_reference": counts["line_reference"] / total,
+                "final_score": counts["final"] / total,
             }
-            metrics["final_score"] = sum(r.final_flag for r in responses) / len(responses)
-            result = await session.exec(select(PromptVersion).where(PromptVersion.prompt_id == prompt_id))
+            result = await session.exec(
+                select(PromptVersion).where(PromptVersion.prompt_id == prompt_id)
+            )
             pv = result.one()
             pv.metrics = metrics
             session.add(pv)
