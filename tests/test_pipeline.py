@@ -15,3 +15,66 @@ def test_process_prompt_triggers_missing_greenlet_error():
         asyncio.run(process_prompt('p1', '{{ value }}'))
 
     assert 'greenlet_spawn' in str(excinfo.value)
+
+
+def test_call_generation_llm_parses_response(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def fake_post(url, headers=None, json=None):
+        captured['url'] = url
+        captured['headers'] = headers
+        captured['json'] = json
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "Responses": [
+                        {"Response": "hello", "ReachedEos": True}
+                    ]
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(pipeline.requests, "post", fake_post)
+
+    result = pipeline.call_generation_llm(
+        [{"role": "user", "content": "hi"}], max_tokens=5, temperature=1
+    )
+
+    assert result == "hello"
+    assert captured['url'] == pipeline._ANSWER_URL
+    assert captured['headers'] == pipeline._HEADERS
+    assert captured['json'] == {
+        "Params": {"NumHypos": 1, "Seed": 42},
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 5,
+        "temperature": 1,
+    }
+
+
+def test_call_generation_llm_raises_on_no_eos(monkeypatch):
+    import pipeline
+
+    def fake_post(url, headers=None, json=None):
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "Responses": [
+                        {"Response": "oops", "ReachedEos": False}
+                    ]
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(pipeline.requests, "post", fake_post)
+
+    with pytest.raises(RuntimeError):
+        pipeline.call_generation_llm([{"role": "user", "content": "hi"}])
