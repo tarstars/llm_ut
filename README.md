@@ -30,3 +30,6 @@ The evaluation pipeline in `pipeline.py` is intentionally simple and does not ca
 any external LLMs. It renders the template against each case in `basket.json`,
 performs a trivial evaluation, stores results in SQLite and updates metrics for
 the prompt version.
+
+All raw requests and responses exchanged with the models are stored in the
+`LLMInteraction` table and can be downloaded via the `/logs` endpoint.
