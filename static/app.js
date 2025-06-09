@@ -28,13 +28,14 @@ async function refreshList() {
     prompts.forEach((p, i) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${i+1}</td>
+        <td>${i + 1}</td>
         <td><a href="#" onclick="showDetails('${p.prompt_id}')">${p.prompt_id}</a></td>
         <td>${new Date(p.created_at).toLocaleString()}</td>
-        <td>${(p.metrics.correctness*100).toFixed(1)}%</td>
-        <td>${(p.metrics.code_presence*100).toFixed(1)}%</td>
-        <td>${(p.metrics.line_reference*100).toFixed(1)}%</td>
-        <td>${(p.metrics.final_score*100).toFixed(1)}%</td>
+        <td>${(p.metrics.right_error_description * 100).toFixed(1)}%</td>
+        <td>${(p.metrics.correct_hint * 100).toFixed(1)}%</td>
+        <td>${(p.metrics.correct_or_absent_code * 100).toFixed(1)}%</td>
+        <td>${(p.metrics.correct_line_reference * 100).toFixed(1)}%</td>
+        <td>${(p.metrics.final_score * 100).toFixed(1)}%</td>
         <td><button onclick="deletePrompt('${p.prompt_id}')">Delete</button></td>
       `;
       tbody.appendChild(tr);

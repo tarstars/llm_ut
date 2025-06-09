@@ -31,7 +31,17 @@ async def root():
 async def add_prompt(payload: dict, background: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     text = payload.get("prompt_text", "")
     pid = str(uuid.uuid4())
-    pv = PromptVersion(prompt_id=pid, prompt_text=text, metrics={"correctness":0, "code_presence":0, "line_reference":0, "final_score":0})
+    pv = PromptVersion(
+        prompt_id=pid,
+        prompt_text=text,
+        metrics={
+            "right_error_description": 0,
+            "correct_hint": 0,
+            "correct_or_absent_code": 0,
+            "correct_line_reference": 0,
+            "final_score": 0,
+        },
+    )
     session.add(pv)
     await session.commit()
     background.add_task(process_prompt, pid, text)
