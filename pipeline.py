@@ -70,6 +70,8 @@ async def process_prompt(prompt_id: str, text: str):
         responses: List[ResponseRecord] = []
         for case in BASKET:
             answer = template.render(**case)
+            # Log the rendered prompt for debugging/inspection
+            print(f"[prompt:{prompt_id} case:{case['id']}] {answer}")
             raw_eval = simple_evaluate(answer)
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
