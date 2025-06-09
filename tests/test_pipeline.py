@@ -158,3 +158,22 @@ def test_call_validation_llm_separate_endpoint(monkeypatch):
         "max_tokens": 10,
         "temperature": 1,
     }
+
+
+def test_evaluate_answer_sends_user_message(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def fake_llm(messages, **kwargs):
+        captured['messages'] = messages
+        return "<right_error_description>Yes</right_error_description>"
+
+    program = "print(1)"
+    error = ""
+    advice = "do nothing"
+
+    pipeline.evaluate_answer(program, error, advice, llm_fn=fake_llm)
+
+    assert captured['messages'][0]['role'] == 'user'
+    assert program in captured['messages'][0]['content']
