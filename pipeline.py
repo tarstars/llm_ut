@@ -148,7 +148,7 @@ def evaluate_answer(
         "Evaluate the advice according to these criteria:\n"
         "1. Right error description\n"
         "2. Correct hint\n"
-        "3. Correct or absent code\n"
+        "3. Correct or absent code – either the tutor gives no code or the code shown is correct. Reply 'No' only if the tutor's code snippet contains mistakes.\n"
         "4. Correct line reference\n\n"
         "Return only the XML tags for each criterion:"
         " <right_error_description>Yes/No</right_error_description>"
