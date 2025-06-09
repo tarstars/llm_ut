@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # allow running tests without dependency
         def render(self, **context) -> str:
             return self.text.format(**context)
 from typing import Dict, List
+import logging
 try:
     from sqlmodel import select
     from app.model import PromptVersion, ResponseRecord
@@ -36,6 +37,9 @@ import os
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logger = logging.getLogger(__name__)
 
 # LLM configuration
 _TOKEN = os.getenv("ZELIBOBA_TOKEN", "").strip()
@@ -86,7 +90,7 @@ def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0)
             "messages": messages,
             "Params": {"NumHypos": 1, "Seed": 42},
         }
-        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
+        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
         resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -102,7 +106,7 @@ def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0)
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
+        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
         resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
@@ -178,6 +182,7 @@ def parse_flags(raw: str) -> Dict[str, bool]:
 
 async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs):
     template = Template(text)
+    logger.info("[process_prompt] start prompt_id=%s cases=%d", prompt_id, len(BASKET))
     async for session in get_session():
         total = 0
         counts = {
@@ -192,6 +197,7 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
             answer = call_generation_llm([{"role": "user", "content": prompt_text}])
+            logger.info("[process_prompt] case=%s answer=%s", case["id"], answer)
             raw_eval = evaluate_answer(
                 case.get("program", ""),
                 case.get("error", ""),
@@ -199,8 +205,10 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
                 llm_fn=eval_fn,
                 **eval_kwargs,
             )
+            logger.info("[process_prompt] case=%s evaluation=%s", case["id"], raw_eval)
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
+            logger.info("[process_prompt] case=%s flags=%s final=%s", case["id"], flags, final_flag)
             rec = ResponseRecord(
                 prompt_id=prompt_id,
                 case_id=case["id"],
@@ -216,6 +224,7 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
             counts["correct_line_reference"] += 1 if flags["correct_line_reference"] else 0
             counts["final"] += 1 if final_flag else 0
             total += 1
+            logger.info("[process_prompt] running counts=%s total=%d", counts, total)
         await session.commit()
         if total:
             metrics = {
@@ -232,3 +241,4 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
             pv.metrics = metrics
             session.add(pv)
             await session.commit()
+            logger.info("[process_prompt] final metrics for %s: %s", prompt_id, metrics)
