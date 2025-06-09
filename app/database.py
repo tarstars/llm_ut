@@ -11,5 +11,7 @@ async def init_db():
         await conn.run_sync(SQLModel.metadata.create_all)
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSession(engine) as session:
+    # Disable attribute expiration on commit so objects remain accessible
+    # after committing within long-running background tasks.
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
