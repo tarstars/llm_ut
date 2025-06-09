@@ -46,17 +46,16 @@ _EVAL_URL = (
 _HEADERS = {
     "Content-Type": "application/json",
     "X-Model-Discovery-Oauth-Token": _TOKEN,
-    "Authorization": "Bearer EMPTY",
 }
 
 
-def call_generation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
+def call_generation_llm(messages, params=None) -> str:
     """Send messages to the answer LLM and return the text response."""
+    if params is None:
+        params = {"NumHypos": 1, "Seed": 42}
     payload = {
-        "Params": {"NumHypos": 1, "Seed": 42},
         "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
+        "Params": params,
     }
     print(f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload)}")
     resp = requests.post(_ANSWER_URL, headers=_HEADERS, json=payload)

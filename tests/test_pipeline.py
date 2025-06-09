@@ -42,18 +42,17 @@ def test_call_generation_llm_parses_response(monkeypatch):
 
     monkeypatch.setattr(pipeline.requests, "post", fake_post)
 
+    params = {"NumHypos": 1, "Seed": 42}
     result = pipeline.call_generation_llm(
-        [{"role": "user", "content": "hi"}], max_tokens=5, temperature=1
+        [{"role": "user", "content": "hi"}], params=params
     )
 
     assert result == "hello"
     assert captured['url'] == pipeline._ANSWER_URL
     assert captured['headers'] == pipeline._HEADERS
     assert captured['json'] == {
-        "Params": {"NumHypos": 1, "Seed": 42},
+        "Params": params,
         "messages": [{"role": "user", "content": "hi"}],
-        "max_tokens": 5,
-        "temperature": 1,
     }
 
 
