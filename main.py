@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -71,6 +72,6 @@ async def delete_prompt(prompt_id: str, session: AsyncSession = Depends(get_sess
 async def download_logs(session: AsyncSession = Depends(get_session)):
     result = await session.exec(select(LLMInteraction))
     logs = result.all()
-    data = [log.dict() for log in logs]
+    data = jsonable_encoder(logs)
     headers = {"Content-Disposition": "attachment; filename=logs.json"}
     return JSONResponse(content=data, headers=headers)
