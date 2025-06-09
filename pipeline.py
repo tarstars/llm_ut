@@ -39,9 +39,15 @@ if not _TOKEN:
 _ANSWER_URL = (
     "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/generative"
 )
-_EVAL_URL = (
+_EVAL_URL_DEFAULT = (
     "http://zeliboba.yandex-team.ru/balance/qwen3_23B_edu_ml/v1/chat/completions"
 )
+_USE_SINGLE_LLM_ENDPOINT = os.getenv("USE_SINGLE_LLM_ENDPOINT", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_EVAL_URL = _ANSWER_URL if _USE_SINGLE_LLM_ENDPOINT else _EVAL_URL_DEFAULT
 
 _HEADERS = {
     "Content-Type": "application/json",
