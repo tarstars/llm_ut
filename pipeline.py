@@ -219,33 +219,29 @@ async def log_interaction(
 
 
 async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs):
+    """Evaluate a prompt concurrently using up to 5 parallel LLM calls."""
     template = Template(text)
-    logger.info("[process_prompt] start prompt_id=%s cases=%d", prompt_id, len(BASKET))
-    async for session in get_session():
-        total = 0
-        counts = {
-            "right_error_description": 0,
-            "correct_hint": 0,
-            "correct_or_absent_code": 0,
-            "correct_line_reference": 0,
-            "final": 0,
-        }
-        for case in BASKET:
+    logger.info(
+        "[process_prompt] start prompt_id=%s cases=%d", prompt_id, len(BASKET)
+    )
+
+    # Acquire a database session early so missing SQL drivers raise before
+    # launching any network requests.
+    async for _ in get_session():
+        break
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def handle_case(case):
+        async with semaphore:
             prompt_text = template.render(**case)
             messages = [{"role": "user", "content": prompt_text}]
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
-            answer = call_generation_llm(messages)
-            await log_interaction(
-                session,
-                prompt_id,
-                case["id"],
-                {"messages": messages},
-                answer,
-                "generation",
-            )
-            logger.info("[process_prompt] case=%s answer=%s", case["id"], answer)
-            raw_eval, eval_msgs = evaluate_answer(
+
+            answer = await asyncio.to_thread(call_generation_llm, messages)
+            raw_eval, eval_msgs = await asyncio.to_thread(
+                evaluate_answer,
                 case.get("program", ""),
                 case.get("error", ""),
                 answer,
@@ -253,43 +249,76 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
                 return_messages=True,
                 **eval_kwargs,
             )
-            await log_interaction(
-                session,
-                prompt_id,
-                case["id"],
-                {"messages": eval_msgs},
-                raw_eval,
-                "validation",
-            )
-            logger.info("[process_prompt] case=%s evaluation=%s", case["id"], raw_eval)
+
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
-            logger.info("[process_prompt] case=%s flags=%s final=%s", case["id"], flags, final_flag)
-            rec = ResponseRecord(
-                prompt_id=prompt_id,
-                case_id=case["id"],
-                answer=answer,
-                raw_evaluation=raw_eval,
-                flags=flags,
-                final_flag=final_flag,
+
+            async for session in get_session():
+                await log_interaction(
+                    session,
+                    prompt_id,
+                    case["id"],
+                    {"messages": messages},
+                    answer,
+                    "generation",
+                )
+                await log_interaction(
+                    session,
+                    prompt_id,
+                    case["id"],
+                    {"messages": eval_msgs},
+                    raw_eval,
+                    "validation",
+                )
+                rec = ResponseRecord(
+                    prompt_id=prompt_id,
+                    case_id=case["id"],
+                    answer=answer,
+                    raw_evaluation=raw_eval,
+                    flags=flags,
+                    final_flag=final_flag,
+                )
+                session.add(rec)
+                await session.commit()
+
+            logger.info(
+                "[process_prompt] case=%s flags=%s final=%s",
+                case["id"],
+                flags,
+                final_flag,
             )
-            session.add(rec)
-            counts["right_error_description"] += 1 if flags["right_error_description"] else 0
-            counts["correct_hint"] += 1 if flags["correct_hint"] else 0
-            counts["correct_or_absent_code"] += 1 if flags["correct_or_absent_code"] else 0
-            counts["correct_line_reference"] += 1 if flags["correct_line_reference"] else 0
-            counts["final"] += 1 if final_flag else 0
-            total += 1
-            logger.info("[process_prompt] running counts=%s total=%d", counts, total)
-        await session.commit()
-        if total:
-            metrics = {
-                "right_error_description": counts["right_error_description"] / total,
-                "correct_hint": counts["correct_hint"] / total,
-                "correct_or_absent_code": counts["correct_or_absent_code"] / total,
-                "correct_line_reference": counts["correct_line_reference"] / total,
-                "final_score": counts["final"] / total,
-            }
+
+            return flags, final_flag
+
+    tasks = [asyncio.create_task(handle_case(case)) for case in BASKET]
+    results = await asyncio.gather(*tasks)
+
+    total = len(results)
+    counts = {
+        "right_error_description": 0,
+        "correct_hint": 0,
+        "correct_or_absent_code": 0,
+        "correct_line_reference": 0,
+        "final": 0,
+    }
+
+    for flags, final_flag in results:
+        counts["right_error_description"] += 1 if flags["right_error_description"] else 0
+        counts["correct_hint"] += 1 if flags["correct_hint"] else 0
+        counts["correct_or_absent_code"] += 1 if flags["correct_or_absent_code"] else 0
+        counts["correct_line_reference"] += 1 if flags["correct_line_reference"] else 0
+        counts["final"] += 1 if final_flag else 0
+
+    if total:
+        metrics = {
+            "right_error_description": counts["right_error_description"] / total,
+            "correct_hint": counts["correct_hint"] / total,
+            "correct_or_absent_code": counts["correct_or_absent_code"] / total,
+            "correct_line_reference": counts["correct_line_reference"] / total,
+            "final_score": counts["final"] / total,
+        }
+
+        async for session in get_session():
             result = await session.exec(
                 select(PromptVersion).where(PromptVersion.prompt_id == prompt_id)
             )
