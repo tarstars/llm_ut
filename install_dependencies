@@ -1,1 +1,1 @@
-pip install fastapi uvicorn jinja2 openai sqlmodel aiosqlite
+pip install fastapi uvicorn jinja2 openai sqlmodel aiosqlite pytest pytest-asyncio

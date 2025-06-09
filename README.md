@@ -6,7 +6,7 @@ aggregated evaluation results.
 
 ## Running
 
-1. Install dependencies (FastAPI, SQLModel, Jinja2, etc.):
+1. Install dependencies (FastAPI, SQLModel, Jinja2, Pytest, etc.):
    ```bash
    bash install_dependencies
    ```
@@ -16,6 +16,11 @@ aggregated evaluation results.
    uvicorn main:app
    ```
 3. Open `http://localhost:8000/` in a browser to use the dashboard.
+
+To verify the code, run the test suite with:
+```bash
+pytest -q
+```
 
 The evaluation pipeline in `pipeline.py` is intentionally simple and does not call
 any external LLMs. It renders the template against each case in `basket.json`,

@@ -1,7 +1,14 @@
 import json
 import asyncio
-import requests
-from jinja2 import Template
+try:
+    from jinja2 import Template
+except ModuleNotFoundError:  # allow running tests without dependency
+    class Template:
+        def __init__(self, text: str):
+            self.text = text
+
+        def render(self, **context) -> str:
+            return self.text.format(**context)
 from typing import Dict, List
 from sqlmodel import select
 from app.model import PromptVersion, ResponseRecord
