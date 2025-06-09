@@ -96,9 +96,16 @@ def test_call_validation_llm_single_endpoint(monkeypatch):
 
             def json(self):
                 return {
-                    "Responses": [
-                        {"Response": "ok", "ReachedEos": True}
-                    ]
+                    "key": "any",
+                    "response": {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": "ok"
+                                }
+                            }
+                        ]
+                    }
                 }
 
         return Resp()
@@ -134,9 +141,14 @@ def test_call_validation_llm_separate_endpoint(monkeypatch):
 
             def json(self):
                 return {
-                    "Responses": [
-                        {"Response": "fine", "ReachedEos": True}
-                    ]
+                    "key": "another",
+                    "response": {
+                        "choices": [
+                            {
+                                "message": {"content": "fine"}
+                            }
+                        ]
+                    }
                 }
 
         return Resp()
