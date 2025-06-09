@@ -4,7 +4,7 @@ This document outlines the steps required to build a minimal viable product for 
 
 ## 1. Environment Setup
 
-1. Install dependencies using `install_dependencies` script.
+1. Install dependencies with `pip install -r requirements.txt`.
 2. Prepare an `.env` file with required OpenAI credentials.
 3. Initialize the SQLite database using the utility in `app/database.py`.
 

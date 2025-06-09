@@ -6,9 +6,9 @@ aggregated evaluation results.
 
 ## Running
 
-1. Install dependencies (FastAPI, SQLModel, Jinja2, Pytest, etc.):
+1. Install dependencies using `requirements.txt`:
    ```bash
-   bash install_dependencies
+   pip install -r requirements.txt
    ```
    *Note: packages require internet access.*
 2. Start the server:
