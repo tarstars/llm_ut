@@ -97,8 +97,14 @@ def simple_evaluate(answer: str) -> str:
     )
 
 
-def evaluate_answer(answer: str) -> str:
-    """Use the evaluation LLM to score an answer."""
+def evaluate_answer(
+    answer: str,
+    llm_fn=None,
+    **llm_kwargs,
+) -> str:
+    """Use a configurable LLM function to score an answer."""
+    if llm_fn is None:
+        llm_fn = call_validation_llm
     messages = [
         {
             "role": "system",
@@ -110,7 +116,7 @@ def evaluate_answer(answer: str) -> str:
         },
         {"role": "user", "content": answer},
     ]
-    return call_validation_llm(messages)
+    return llm_fn(messages, **llm_kwargs)
 
 
 def parse_flags(raw: str) -> Dict[str, bool]:
@@ -129,7 +135,7 @@ def parse_flags(raw: str) -> Dict[str, bool]:
     }
 
 
-async def process_prompt(prompt_id: str, text: str):
+async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs):
     template = Template(text)
     async for session in get_session():
         total = 0
@@ -144,7 +150,7 @@ async def process_prompt(prompt_id: str, text: str):
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
             answer = call_generation_llm([{"role": "user", "content": prompt_text}])
-            raw_eval = evaluate_answer(answer)
+            raw_eval = evaluate_answer(answer, llm_fn=eval_fn, **eval_kwargs)
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
             rec = ResponseRecord(
