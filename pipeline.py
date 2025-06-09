@@ -93,19 +93,40 @@ def call_generation_llm(messages, params=None) -> str:
 
 
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
-    """Send messages to the validation LLM and return the text response."""
+    """Send messages to the validation LLM and return the text response.
+
+    The service may return different JSON envelopes depending on the
+    deployment.  Historically the response mimicked the generation API and
+    contained a ``Responses`` array.  Newer versions wrap the model output in a
+    ``response`` object similar to the OpenAI format.  This helper extracts the
+    assistant message from either structure.
+    """
+
     payload = {
         "model": "deepseek-ai/deepseek-v3",
         "messages": messages,
     }
-    print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}")
+    print(
+        f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}"
+    )
     resp = requests.post(_EVAL_URL, headers=_EVAL_HEADERS, json=payload)
     resp.raise_for_status()
     data = resp.json()
-    chunk = data["Responses"][0]
-    if not chunk.get("ReachedEos"):
-        raise RuntimeError("validation generation did not finish with eos")
-    return chunk["Response"]
+
+    # Legacy format: {"Responses": [{"Response": "...", "ReachedEos": True}]}
+    if "Responses" in data:
+        chunk = data["Responses"][0]
+        if not chunk.get("ReachedEos"):
+            raise RuntimeError("validation generation did not finish with eos")
+        return chunk["Response"]
+
+    # New format may include an outer "response" envelope as shown in the
+    # evaluation example.  Extract the content from the first choice.
+    container_obj = data.get("response", data)
+    try:
+        return container_obj["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001 - handle unexpected responses
+        raise RuntimeError("unexpected validation response format") from exc
 
 
 with open("basket.json") as f:
