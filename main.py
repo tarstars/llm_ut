@@ -7,8 +7,14 @@ from app.database import init_db, get_session
 from app.model import PromptVersion, ResponseRecord
 import uuid
 import asyncio
+import sys
 from typing import List
 from pipeline import process_prompt
+
+# Ensure console output uses UTF-8 encoding when printing logs
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")

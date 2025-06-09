@@ -1,5 +1,6 @@
 import json
 import asyncio
+import sys
 try:
     import requests
 except ModuleNotFoundError:  # allow running tests without dependency
@@ -30,6 +31,11 @@ except ModuleNotFoundError:  # allow running tests without dependency
         raise RuntimeError("greenlet_spawn: sqlmodel not installed")
         yield  # pragma: no cover
 import os
+
+# Ensure console output uses UTF-8 encoding when printing logs
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 # LLM configuration
 _TOKEN = os.getenv("ZELIBOBA_TOKEN", "").strip()
