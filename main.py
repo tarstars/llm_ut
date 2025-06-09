@@ -1,10 +1,10 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.database import init_db, get_session
-from app.model import PromptVersion, ResponseRecord
+from app.model import PromptVersion, ResponseRecord, LLMInteraction
 import uuid
 import asyncio
 import sys
@@ -65,3 +65,12 @@ async def delete_prompt(prompt_id: str, session: AsyncSession = Depends(get_sess
     await session.exec(delete(PromptVersion).where(PromptVersion.prompt_id == prompt_id))
     await session.commit()
     return {"status": "deleted"}
+
+
+@app.get("/logs")
+async def download_logs(session: AsyncSession = Depends(get_session)):
+    result = await session.exec(select(LLMInteraction))
+    logs = result.all()
+    data = [log.dict() for log in logs]
+    headers = {"Content-Disposition": "attachment; filename=logs.json"}
+    return JSONResponse(content=data, headers=headers)

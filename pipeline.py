@@ -21,7 +21,7 @@ from typing import Dict, List
 import logging
 try:
     from sqlmodel import select
-    from app.model import PromptVersion, ResponseRecord
+    from app.model import PromptVersion, ResponseRecord, LLMInteraction
     from app.database import get_session, AsyncSession
 except ModuleNotFoundError:  # allow running tests without dependency
     select = None
@@ -134,6 +134,7 @@ def evaluate_answer(
     error: str,
     advice: str,
     llm_fn=None,
+    return_messages: bool = False,
     **llm_kwargs,
 ) -> str:
     """Use a configurable LLM function to score an answer."""
@@ -160,7 +161,8 @@ def evaluate_answer(
     messages = [
         {"role": "user", "content": prompt},
     ]
-    return llm_fn(messages, **llm_kwargs)
+    result = llm_fn(messages, **llm_kwargs)
+    return (result, messages) if return_messages else result
 
 
 def parse_flags(raw: str) -> Dict[str, bool]:
@@ -180,6 +182,25 @@ def parse_flags(raw: str) -> Dict[str, bool]:
     }
 
 
+async def log_interaction(
+    session: AsyncSession,
+    prompt_id: str,
+    question_id: int,
+    request_payload: Dict,
+    response: str,
+    request_type: str,
+) -> None:
+    """Persist a request/response pair to the database."""
+    rec = LLMInteraction(
+        prompt_id=prompt_id,
+        question_id=int(question_id),
+        request_type=request_type,
+        request_payload=request_payload,
+        response=response,
+    )
+    session.add(rec)
+
+
 async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs):
     template = Template(text)
     logger.info("[process_prompt] start prompt_id=%s cases=%d", prompt_id, len(BASKET))
@@ -194,16 +215,34 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
         }
         for case in BASKET:
             prompt_text = template.render(**case)
+            messages = [{"role": "user", "content": prompt_text}]
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
-            answer = call_generation_llm([{"role": "user", "content": prompt_text}])
+            answer = call_generation_llm(messages)
+            await log_interaction(
+                session,
+                prompt_id,
+                case["id"],
+                {"messages": messages},
+                answer,
+                "generation",
+            )
             logger.info("[process_prompt] case=%s answer=%s", case["id"], answer)
-            raw_eval = evaluate_answer(
+            raw_eval, eval_msgs = evaluate_answer(
                 case.get("program", ""),
                 case.get("error", ""),
                 answer,
                 llm_fn=eval_fn,
+                return_messages=True,
                 **eval_kwargs,
+            )
+            await log_interaction(
+                session,
+                prompt_id,
+                case["id"],
+                {"messages": eval_msgs},
+                raw_eval,
+                "validation",
             )
             logger.info("[process_prompt] case=%s evaluation=%s", case["id"], raw_eval)
             flags = parse_flags(raw_eval)
