@@ -16,7 +16,7 @@ except ModuleNotFoundError:  # allow running tests without dependency
 
         def render(self, **context) -> str:
             return self.text.format(**context)
-from typing import Dict, List
+from typing import Callable, Dict, List, Any, Optional
 try:
     from sqlmodel import select
     from app.model import PromptVersion, ResponseRecord
@@ -97,8 +97,29 @@ def simple_evaluate(answer: str) -> str:
     )
 
 
-def evaluate_answer(answer: str) -> str:
-    """Use the evaluation LLM to score an answer."""
+def evaluate_answer(
+    answer: str,
+    llm_fn: Optional[Callable[[List[Dict[str, str]]], str]] = None,
+    **llm_kwargs: Any,
+) -> str:
+    """Use a configurable LLM function to score an answer.
+
+    Parameters
+    ----------
+    answer:
+        The text of the answer to evaluate.
+    llm_fn:
+        Optional callable that takes the message list and returns the raw
+        evaluation string. When ``None`` the generation LLM is used.
+    **llm_kwargs:
+        Extra keyword arguments forwarded to ``llm_fn``.
+
+    By default the same LLM used for answer generation also performs
+    evaluation, but callers may supply a custom handler that follows a
+    different request format.
+    """
+    if llm_fn is None:
+        llm_fn = call_generation_llm
     messages = [
         {
             "role": "system",
@@ -110,7 +131,7 @@ def evaluate_answer(answer: str) -> str:
         },
         {"role": "user", "content": answer},
     ]
-    return call_validation_llm(messages)
+    return llm_fn(messages, **llm_kwargs)
 
 
 def parse_flags(raw: str) -> Dict[str, bool]:
@@ -129,7 +150,26 @@ def parse_flags(raw: str) -> Dict[str, bool]:
     }
 
 
-async def process_prompt(prompt_id: str, text: str):
+async def process_prompt(
+    prompt_id: str,
+    text: str,
+    eval_fn: Optional[Callable[[List[Dict[str, str]]], str]] = None,
+    **eval_kwargs: Any,
+):
+    """Generate answers and record evaluation results.
+
+    Parameters
+    ----------
+    prompt_id:
+        Identifier for the prompt template.
+    text:
+        Jinja2 template to render for each basket case.
+    eval_fn:
+        Optional custom evaluation LLM function. Defaults to using the
+        generation LLM when not provided.
+    **eval_kwargs:
+        Additional keyword arguments forwarded to ``eval_fn``.
+    """
     template = Template(text)
     async for session in get_session():
         total = 0
@@ -144,7 +184,7 @@ async def process_prompt(prompt_id: str, text: str):
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
             answer = call_generation_llm([{"role": "user", "content": prompt_text}])
-            raw_eval = evaluate_answer(answer)
+            raw_eval = evaluate_answer(answer, llm_fn=eval_fn, **eval_kwargs)
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
             rec = ResponseRecord(

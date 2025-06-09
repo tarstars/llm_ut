@@ -77,3 +77,46 @@ def test_call_generation_llm_raises_on_no_eos(monkeypatch):
 
     with pytest.raises(RuntimeError):
         pipeline.call_generation_llm([{"role": "user", "content": "hi"}])
+
+
+def test_evaluate_answer_defaults_to_generation_llm(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def fake_call(messages, **kwargs):
+        captured["messages"] = messages
+        captured["kwargs"] = kwargs
+        return (
+            "<correctness>Yes</correctness>"
+            "<code_presence>No</code_presence>"
+            "<line_reference>No</line_reference>"
+        )
+
+    monkeypatch.setattr(pipeline, "call_generation_llm", fake_call)
+
+    result = pipeline.evaluate_answer("some answer")
+
+    assert "<correctness>" in result
+    assert captured["messages"][1]["content"] == "some answer"
+
+
+def test_evaluate_answer_custom_llm(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def custom_call(messages, **kwargs):
+        captured["messages"] = messages
+        captured["kwargs"] = kwargs
+        return (
+            "<correctness>No</correctness>"
+            "<code_presence>No</code_presence>"
+            "<line_reference>Yes</line_reference>"
+        )
+
+    result = pipeline.evaluate_answer("foo", llm_fn=custom_call, extra=1)
+
+    assert "<correctness>" in result
+    assert captured["messages"][1]["content"] == "foo"
+    assert captured["kwargs"] == {"extra": 1}
