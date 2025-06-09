@@ -37,7 +37,7 @@ if not _TOKEN:
     raise RuntimeError("ZELIBOBA_TOKEN environment variable not set")
 
 _ANSWER_URL = (
-    "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/v1/chat/completions"
+    "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/generative"
 )
 _EVAL_URL = (
     "http://zeliboba.yandex-team.ru/balance/qwen3_23B_edu_ml/v1/chat/completions"
