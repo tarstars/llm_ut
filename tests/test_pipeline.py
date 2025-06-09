@@ -77,3 +77,84 @@ def test_call_generation_llm_raises_on_no_eos(monkeypatch):
 
     with pytest.raises(RuntimeError):
         pipeline.call_generation_llm([{"role": "user", "content": "hi"}])
+
+
+def test_call_validation_llm_single_endpoint(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def fake_post(url, headers=None, json=None):
+        captured['url'] = url
+        captured['headers'] = headers
+        captured['json'] = json
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "Responses": [
+                        {"Response": "ok", "ReachedEos": True}
+                    ]
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(pipeline.requests, "post", fake_post)
+    monkeypatch.setattr(pipeline, "_USE_SINGLE_LLM_ENDPOINT", True)
+    monkeypatch.setattr(pipeline, "_EVAL_URL", "http://example.com/eval")
+
+    result = pipeline.call_validation_llm([{"role": "user", "content": "hi"}])
+
+    assert result == "ok"
+    assert captured['url'] == pipeline._EVAL_URL
+    assert captured['headers'] == pipeline._HEADERS
+    assert captured['json'] == {
+        "messages": [{"role": "user", "content": "hi"}],
+        "Params": {"NumHypos": 1, "Seed": 42},
+    }
+
+
+def test_call_validation_llm_separate_endpoint(monkeypatch):
+    import pipeline
+
+    captured = {}
+
+    def fake_post(url, headers=None, json=None):
+        captured['url'] = url
+        captured['headers'] = headers
+        captured['json'] = json
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "choices": [
+                        {"message": {"content": "fine"}}
+                    ]
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(pipeline.requests, "post", fake_post)
+    monkeypatch.setattr(pipeline, "_USE_SINGLE_LLM_ENDPOINT", False)
+    monkeypatch.setattr(pipeline, "_EVAL_URL", "http://other.com/eval")
+
+    result = pipeline.call_validation_llm(
+        [{"role": "user", "content": "hi"}], max_tokens=10, temperature=1
+    )
+
+    assert result == "fine"
+    assert captured['url'] == pipeline._EVAL_URL
+    assert captured['headers'] == pipeline._HEADERS
+    assert captured['json'] == {
+        "model": "does_not_matter",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": False,
+        "max_tokens": 10,
+        "temperature": 1,
+    }
