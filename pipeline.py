@@ -75,17 +75,31 @@ def call_generation_llm(messages, params=None) -> str:
 
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
     """Send messages to the validation LLM and return the text response."""
-    payload = {
-        "model": "does_not_matter",
-        "messages": messages,
-        "stream": False,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
-    resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    if _USE_SINGLE_LLM_ENDPOINT:
+        payload = {
+            "messages": messages,
+            "Params": {"NumHypos": 1, "Seed": 42},
+        }
+        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
+        resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        chunk = data["Responses"][0]
+        if not chunk.get("ReachedEos"):
+            raise RuntimeError("validation generation did not finish with eos")
+        return chunk["Response"]
+    else:
+        payload = {
+            "model": "does_not_matter",
+            "messages": messages,
+            "stream": False,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
+        resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
 
 
 with open("basket.json") as f:
