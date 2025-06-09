@@ -3,11 +3,36 @@ import asyncio
 import sys
 try:
     import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util import Retry
 except ModuleNotFoundError:  # allow running tests without dependency
-    class requests:
-        @staticmethod
-        def post(*args, **kwargs):
+    class Retry:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class HTTPAdapter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _FakeSession:
+        def mount(self, *args, **kwargs):
+            pass
+
+        def post(self, *args, **kwargs):
             raise RuntimeError("requests library not installed")
+
+    class _FakeExceptions:
+        class RequestException(Exception):
+            pass
+
+        class ConnectionError(RequestException):
+            pass
+
+    class requests:  # noqa: D401 - simple stub
+        """Fallback requests-like interface for tests without dependency."""
+
+        Session = _FakeSession
+        exceptions = _FakeExceptions
 try:
     from jinja2 import Template
 except ModuleNotFoundError:  # allow running tests without dependency
@@ -19,6 +44,7 @@ except ModuleNotFoundError:  # allow running tests without dependency
             return self.text.format(**context)
 from typing import Dict, List
 import logging
+import time
 try:
     from sqlmodel import select
     from app.model import PromptVersion, ResponseRecord, LLMInteraction
@@ -73,6 +99,10 @@ _EVAL_HEADERS = {
     "authorization": f"OAuth {_EVAL_TOKEN}",
 }
 
+_SESSION = requests.Session()
+_SESSION.mount("http://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.5)))
+_SESSION.mount("https://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.5)))
+
 
 def call_generation_llm(messages, params=None) -> str:
     """Send messages to the answer LLM and return the text response."""
@@ -82,14 +112,22 @@ def call_generation_llm(messages, params=None) -> str:
         "messages": messages,
         "Params": params,
     }
-    print(f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload, ensure_ascii=False)}")
-    resp = requests.post(_ANSWER_URL, headers=_HEADERS, json=payload)
-    resp.raise_for_status()
-    data = resp.json()
-    chunk = data["Responses"][0]
-    if not chunk.get("ReachedEos"):
-        raise RuntimeError("generation did not finish with eos")
-    return chunk["Response"]
+    print(
+        f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload, ensure_ascii=False)}"
+    )
+    for attempt in range(3):
+        try:
+            resp = _SESSION.post(_ANSWER_URL, headers=_HEADERS, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            chunk = data["Responses"][0]
+            if not chunk.get("ReachedEos"):
+                raise RuntimeError("generation did not finish with eos")
+            return chunk["Response"]
+        except requests.exceptions.RequestException as exc:
+            if attempt == 2:
+                raise RuntimeError("failed to call generation LLM") from exc
+            time.sleep(2 ** attempt)
 
 
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
@@ -109,9 +147,16 @@ def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0)
     print(
         f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload, ensure_ascii=False)}"
     )
-    resp = requests.post(_EVAL_URL, headers=_EVAL_HEADERS, json=payload)
-    resp.raise_for_status()
-    data = resp.json()
+    for attempt in range(3):
+        try:
+            resp = _SESSION.post(_EVAL_URL, headers=_EVAL_HEADERS, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except requests.exceptions.RequestException as exc:
+            if attempt == 2:
+                raise RuntimeError("failed to call validation LLM") from exc
+            time.sleep(2 ** attempt)
 
     # Legacy format: {"Responses": [{"Response": "...", "ReachedEos": True}]}
     if "Responses" in data:
@@ -239,16 +284,28 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
             # Log the rendered prompt for debugging/inspection
             print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
 
-            answer = await asyncio.to_thread(call_generation_llm, messages)
-            raw_eval, eval_msgs = await asyncio.to_thread(
-                evaluate_answer,
-                case.get("program", ""),
-                case.get("error", ""),
-                answer,
-                llm_fn=eval_fn,
-                return_messages=True,
-                **eval_kwargs,
-            )
+            try:
+                answer = await asyncio.to_thread(call_generation_llm, messages)
+                raw_eval, eval_msgs = await asyncio.to_thread(
+                    evaluate_answer,
+                    case.get("program", ""),
+                    case.get("error", ""),
+                    answer,
+                    llm_fn=eval_fn,
+                    return_messages=True,
+                    **eval_kwargs,
+                )
+            except RuntimeError as exc:
+                logger.error(
+                    "[process_prompt] case %s failed: %s", case["id"], exc
+                )
+                flags = {
+                    "right_error_description": False,
+                    "correct_hint": False,
+                    "correct_or_absent_code": False,
+                    "correct_line_reference": False,
+                }
+                return flags, False
 
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
@@ -291,7 +348,13 @@ async def process_prompt(prompt_id: str, text: str, eval_fn=None, **eval_kwargs)
             return flags, final_flag
 
     tasks = [asyncio.create_task(handle_case(case)) for case in BASKET]
-    results = await asyncio.gather(*tasks)
+    raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = []
+    for item in raw_results:
+        if isinstance(item, Exception):
+            logger.error("[process_prompt] unexpected error: %s", item)
+        else:
+            results.append(item)
 
     total = len(results)
     counts = {
