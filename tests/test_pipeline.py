@@ -133,8 +133,8 @@ def test_call_validation_llm_separate_endpoint(monkeypatch):
 
             def json(self):
                 return {
-                    "choices": [
-                        {"message": {"content": "fine"}}
+                    "Responses": [
+                        {"Response": "fine", "ReachedEos": True}
                     ]
                 }
 
@@ -152,11 +152,8 @@ def test_call_validation_llm_separate_endpoint(monkeypatch):
     assert captured['url'] == pipeline._EVAL_URL
     assert captured['headers'] == pipeline._HEADERS
     assert captured['json'] == {
-        "model": "does_not_matter",
         "messages": [{"role": "user", "content": "hi"}],
-        "stream": False,
-        "max_tokens": 10,
-        "temperature": 1,
+        "Params": {"NumHypos": 1, "Seed": 42},
     }
 
 
