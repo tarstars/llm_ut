@@ -31,6 +31,7 @@ async function refreshList() {
         <td>${i + 1}</td>
         <td><a href="#" onclick="showDetails('${p.prompt_id}')">${p.prompt_id}</a></td>
         <td>${new Date(p.created_at).toLocaleString()}</td>
+        <td><pre>${p.prompt_text}</pre></td>
         <td>${(p.metrics.right_error_description * 100).toFixed(1)}%</td>
         <td>${(p.metrics.correct_hint * 100).toFixed(1)}%</td>
         <td>${(p.metrics.correct_or_absent_code * 100).toFixed(1)}%</td>
