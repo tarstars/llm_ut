@@ -5,7 +5,8 @@ const API = {
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ prompt_text: text })
                   }).then(r => r.json()),
-  getDetails:  (id) => fetch(`/prompts/${id}/worst`).then(r => r.json())
+  getDetails:  (id) => fetch(`/prompts/${id}/worst`).then(r => r.json()),
+  deletePrompt: (id) => fetch(`/prompts/${id}`, {method:'DELETE'}).then(r => r.json())
 };
 
 document.getElementById('prompt-form').onsubmit = async e => {
@@ -24,19 +25,20 @@ async function refreshList() {
   const tbody = document.getElementById('prompt-rows');
   tbody.innerHTML = '';
   // assume prompts already sorted by final_score desc
-  prompts.forEach((p, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${i+1}</td>
-      <td><a href="#" onclick="showDetails('${p.prompt_id}')">${p.prompt_id}</a></td>
-      <td>${new Date(p.created_at).toLocaleString()}</td>
-      <td>${(p.metrics.correctness*100).toFixed(1)}%</td>
-      <td>${(p.metrics.code_presence*100).toFixed(1)}%</td>
-      <td>${(p.metrics.line_reference*100).toFixed(1)}%</td>
-      <td>${(p.metrics.final_score*100).toFixed(1)}%</td>
-    `;
-    tbody.appendChild(tr);
-  });
+    prompts.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td><a href="#" onclick="showDetails('${p.prompt_id}')">${p.prompt_id}</a></td>
+        <td>${new Date(p.created_at).toLocaleString()}</td>
+        <td>${(p.metrics.correctness*100).toFixed(1)}%</td>
+        <td>${(p.metrics.code_presence*100).toFixed(1)}%</td>
+        <td>${(p.metrics.line_reference*100).toFixed(1)}%</td>
+        <td>${(p.metrics.final_score*100).toFixed(1)}%</td>
+        <td><button onclick="deletePrompt('${p.prompt_id}')">Delete</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
 }
 
 async function showDetails(promptId) {
@@ -61,6 +63,12 @@ async function showDetails(promptId) {
 
 function closeModal() {
   document.getElementById('details-modal').style.display = 'none';
+}
+
+async function deletePrompt(id) {
+  if (!confirm('Delete this prompt?')) return;
+  await API.deletePrompt(id);
+  await refreshList();
 }
 
 // initial load

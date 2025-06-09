@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import select
+from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.database import init_db, get_session
 from app.model import PromptVersion, ResponseRecord
@@ -48,3 +48,10 @@ async def list_prompts(session: AsyncSession = Depends(get_session)) -> List[Pro
 async def worst_cases(prompt_id: str, session: AsyncSession = Depends(get_session)) -> List[ResponseRecord]:
     result = await session.exec(select(ResponseRecord).where(ResponseRecord.prompt_id == prompt_id, ResponseRecord.final_flag == False))
     return result.all()
+
+@app.delete("/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: str, session: AsyncSession = Depends(get_session)):
+    await session.exec(delete(ResponseRecord).where(ResponseRecord.prompt_id == prompt_id))
+    await session.exec(delete(PromptVersion).where(PromptVersion.prompt_id == prompt_id))
+    await session.commit()
+    return {"status": "deleted"}
