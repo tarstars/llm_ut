@@ -1,6 +1,13 @@
 import json
 import asyncio
 try:
+    import requests
+except ModuleNotFoundError:  # allow running tests without dependency
+    class requests:
+        @staticmethod
+        def post(*args, **kwargs):
+            raise RuntimeError("requests library not installed")
+try:
     from jinja2 import Template
 except ModuleNotFoundError:  # allow running tests without dependency
     class Template:
@@ -10,9 +17,18 @@ except ModuleNotFoundError:  # allow running tests without dependency
         def render(self, **context) -> str:
             return self.text.format(**context)
 from typing import Dict, List
-from sqlmodel import select
-from app.model import PromptVersion, ResponseRecord
-from app.database import get_session, AsyncSession
+try:
+    from sqlmodel import select
+    from app.model import PromptVersion, ResponseRecord
+    from app.database import get_session, AsyncSession
+except ModuleNotFoundError:  # allow running tests without dependency
+    select = None
+    PromptVersion = ResponseRecord = object
+    AsyncSession = None
+
+    async def get_session():
+        raise RuntimeError("greenlet_spawn: sqlmodel not installed")
+        yield  # pragma: no cover
 import os
 
 # LLM configuration
@@ -20,7 +36,10 @@ _TOKEN = os.getenv("ZELIBOBA_TOKEN", "").strip()
 if not _TOKEN:
     raise RuntimeError("ZELIBOBA_TOKEN environment variable not set")
 
-_MODEL_URL = (
+_ANSWER_URL = (
+    "http://zeliboba.yandex-team.ru/balance/32b_aligned_quantized_202502/v1/chat/completions"
+)
+_EVAL_URL = (
     "http://zeliboba.yandex-team.ru/balance/qwen3_23B_edu_ml/v1/chat/completions"
 )
 
@@ -29,6 +48,21 @@ _HEADERS = {
     "X-Model-Discovery-Oauth-Token": _TOKEN,
     "Authorization": "Bearer EMPTY",
 }
+
+
+def call_generation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
+    """Send messages to the answer LLM and return the text response."""
+    payload = {
+        "model": "does_not_matter",
+        "messages": messages,
+        "stream": False,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    print(f"[LLM Request] url={_ANSWER_URL} payload={json.dumps(payload)}")
+    resp = requests.post(_ANSWER_URL, headers=_HEADERS, json=payload)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0) -> str:
@@ -40,7 +74,8 @@ def call_validation_llm(messages, max_tokens: int = 32000, temperature: int = 0)
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    resp = requests.post(_MODEL_URL, headers=_HEADERS, json=payload)
+    print(f"[LLM Request] url={_EVAL_URL} payload={json.dumps(payload)}")
+    resp = requests.post(_EVAL_URL, headers=_HEADERS, json=payload)
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
@@ -58,6 +93,22 @@ def simple_evaluate(answer: str) -> str:
         f"<code_presence>{code_presence}</code_presence>"
         f"<line_reference>{line_reference}</line_reference>"
     )
+
+
+def evaluate_answer(answer: str) -> str:
+    """Use the evaluation LLM to score an answer."""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Return XML flags <correctness>Yes/No</correctness>"
+                "<code_presence>Yes/No</code_presence>"
+                "<line_reference>Yes/No</line_reference> only."
+            ),
+        },
+        {"role": "user", "content": answer},
+    ]
+    return call_validation_llm(messages)
 
 
 def parse_flags(raw: str) -> Dict[str, bool]:
@@ -87,10 +138,11 @@ async def process_prompt(prompt_id: str, text: str):
             "final": 0,
         }
         for case in BASKET:
-            answer = template.render(**case)
+            prompt_text = template.render(**case)
             # Log the rendered prompt for debugging/inspection
-            print(f"[prompt:{prompt_id} case:{case['id']}] {answer}")
-            raw_eval = simple_evaluate(answer)
+            print(f"[prompt:{prompt_id} case:{case['id']}] {prompt_text}")
+            answer = call_generation_llm([{"role": "user", "content": prompt_text}])
+            raw_eval = evaluate_answer(answer)
             flags = parse_flags(raw_eval)
             final_flag = all(flags.values())
             rec = ResponseRecord(
